@@ -8,47 +8,100 @@ from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook, load_workbook
 import pandas as pd
 import gspread
+import git
 
 
+#! /anaconda3/bin/python
 
 def template_creator():
-    tracking_number = input('input tracking number\n')
-    tracking_link = 'https://www.dhl.de/en/privatkunden/pakete-empfangen/verfolgen.html?piececode='+tracking_number
-    template = f"""Hello,
-    Thank you for choosing to shop at "Bike Away"!
-    We just wanted to let you know that your order has been shipped:
-
-    Tracking number:  {tracking_number}
-    Tracking link: {tracking_link}
-              
-    If you have any further questions don't hesitate to contact us.
-    Also, be sure to check out some of our other items:
-    bikingaway.com - same items but 10% cheaper!"""
-    print (template)
+    q_1 = input('select template\n1)shipping\n2)site offer\n')
+    if q_1 == '1':
+        tracking_number = input('input tracking number\n')
+        tracking_link = 'https://www.dhl.de/en/privatkunden/pakete-empfangen/verfolgen.html?piececode='+tracking_number
+        template = f"""Hello,
+        Thank you for choosing to shop at "Bike Away"!
+        We just wanted to let you know that your order has been shipped:
+    
+        Tracking number:  {tracking_number}
+        Tracking link: {tracking_link}
                   
+        If you have any further questions don't hesitate to contact us.
+        Also, be sure to check out some of our other items:
+        bikingaway.com - same items but 10% cheaper!"""
+        print (template)
+
+    item = input('item name\n')
+    item_fixed = item.replace(" ","-")
+
+    item_link = 'https://bikingaway.com/product/'+item_fixed
+    template2 = f"""Hello,
+    I would like to offer you to purchase directly from our s i t e in order to get a 10% discount. 
+    The reason I am offering is because ebay fees are super high and we are trying to establish a small online business
+    without the ridiculously high fees here on ebay.
+    
+    We offer secure paypal chekcout, and would love to have you as a customer:
+   {item_link}
+    
+    It is the exact same item, so no worries. Please let us know if you feel comfortable trusting us with our offer.
+    Once again, paypal is the payment method. Very safe."""
+    print(template2)
 
 
 
 
 
 def web_scrapper_ebay():
-    URL = input('insert ebay URL ')
+    q1 = input('scraping origin \n(1)Ebay\n(2)Bikingaway\n')
+
+    URL = input('insert URL ')
     #URL2 = input('insert gmail URL')
 
     driver = webdriver.Chrome(executable_path=r"/home/dov/chromedriver")
 
     driver.get(URL)
     content = driver.page_source
-
-#extracting data via BS
     soup = BeautifulSoup(content, "html.parser")
-    customer_name = soup.find("span", class_="user-name")
-    customer_username = soup.find("span", class_="user-id")
-    item = soup.find("span", class_="item-title")
-    sale_date = soup.find_all("dd")
-    #buyers_country = soup.find_all('button', type  = 'button')
-    #country = (str(buyers_country[35]))
-    return (customer_name.text,customer_username.text,item.text,str(sale_date[4].text))
+    if q1 == '1':
+    #extracting data via BS for ebay
+        customer_name = soup.find("span", class_="user-name")
+        customer_username = soup.find("span", class_="user-id")
+        item = soup.find("span", class_="item-title")
+        sale_date = soup.find_all("dd")
+
+        return (customer_name.text,customer_username.text,item.text,str(sale_date[4].text))
+
+    if q1 =='2':
+        #this includes customer name, country and email
+        customer_info = soup.find('div', class_="address")
+
+        # here I appened all strings from element to list
+        result = []
+        for i in customer_info.strings:
+            result.append(i)
+
+
+        #this inclues product name
+        product = soup.find('td', class_='name')
+
+        # I repeat the same process for the product name
+        result2 = []
+        for i in product.strings:
+            result2.append(i)
+
+        #this includes the date of purchase
+        date = soup.find('span', class_='description')
+        date = str(date.text)
+        date = date[:date.find('via')]
+
+        #this includes order number
+
+        order_num = soup.find('h2', class_='woocommerce-order-data__heading')
+        order_num = str(order_num.text)
+        order_num = order_num[:order_num.find('det')]
+
+        #result 1: name, result 5: country, result 8: email + order num , result2[1]: product name and date
+        return (result[1] + ',' + result[5] ,",".join([order_num,result[8]]) , result2[1] , date)
+
 
 def currency_converter(amount):
     c = CurrencyConverter()
@@ -74,6 +127,9 @@ def to_google(fees, listing_price,profit , retailer_p):
     ws = sheet.worksheet('active')
     free_row = (next_available_row(ws))
     ws.update(f'A{free_row}', "")
+
+
+
 
     #Customer name, username, item and saledate with web_scrapping function
     customer_name,customer_username,product,purchase_date = web_scrapper_ebay()
@@ -101,7 +157,7 @@ def to_google(fees, listing_price,profit , retailer_p):
     #order number
     ws.update(f'E{free_row}', input('enter order number\n'))
 
-    #my order date cell
+    #my order date column
     today = date.today()
     d1 = today.strftime("%d.%m.%Y")
     ws.update(f'H{free_row}', str(d1))
@@ -116,6 +172,9 @@ def to_google(fees, listing_price,profit , retailer_p):
     ws.update(f'M{free_row}', round(round(profit / listing_price, 2)))
     # payment method cell
     ws.update(f'N{free_row}', str(retailer_p) + ' Euro')
+
+    #profit-percentage column
+    ws.update(f'M{free_row}', round(profit/listing_price,2))
 
 #calculates the actual selling price after eceving the price from function "selling price"
 def selling_price_calc(price):
@@ -135,7 +194,8 @@ def selling_price_calc(price):
 
 
 def profit():
-
+    # asking whcih calc is relevant
+    q_2 = input('How to calculate fees\n1)Ebay\n2)bikeaway\n')
     #simple while loop to accept only valid inputs
     while True:
         q_1 = input('select retailer currency\n1)Euro\n2)USD\n')
@@ -144,23 +204,42 @@ def profit():
             continue
         else:
             break
-    #selected currency is EURO
     listing_p = float(input('please input listing price: '))
+    # selected currency is EURO
     if q_1.lower() == '1':
         retailer_p = float(input('please enter retailer price: '))
         #converts retailer price in EURO to USD
         retailer_p_usd = currency_converter(retailer_p)
-        #calcultes all fees: ebay,bank,payoneer etc
-        fees = (listing_p* 0.1614) + retailer_p_usd
-        #final profit after all fees are deducted
-        profit_1 = round(listing_p - fees,2)
-        return ( fees, listing_p, profit_1 , retailer_p)
+
+
+
+        if q_2 == '1':
+            #calcultes all fees: ebay,bank,payoneer etc and profits
+            fees = (listing_p * 0.1614) + retailer_p_usd
+            # final profit after all fees are deducted
+            profit_ebay = round(listing_p - fees, 2)
+            return fees, listing_p, profit_ebay, retailer_p
+        if q_2 == '2':
+            #calculates fees (5% receiving paypal + 3% conversion rate) and profits for bikeaway
+            fees_bikeaway = (listing_p * 0.08) + retailer_p_usd
+            profit_bikeaway = round(listing_p - fees_bikeaway, 2)
+            return fees_bikeaway, listing_p, profit_bikeaway, retailer_p
+
+
+
     #selected currency is USD
     else:
         retailer_price = float(input('please enter retailer price: '))
-        fees1 = (listing_p * 0.1614) + retailer_price
-        profit_2 = round(listing_p - fees1,2)
-        return (fees1, listing_p, profit_2, retailer_price)
+        if q_2 == '1':
+            fees1 = (listing_p * 0.1614) + retailer_price
+            profit_2 = round(listing_p - fees1,2)
+            return (fees1, listing_p, profit_2, retailer_price)
+
+        if q_2 == '2':
+            fees1 = (listing_p * 0.08) + retailer_price
+            profit_bikeaway_2 = round(listing_p - fees1, 2)
+            return (fees1, listing_p, profit_bikeaway_2, retailer_price)
+
 
 
 
@@ -208,6 +287,7 @@ def selling_price():
 
 def lobby():
     while True:
+        print('hello')
         q = input('please select operation:\n1)excel\n2)calc\n3)crawler\n4)template\n')
         if q == '1':
             #accepts 4 varaibles: fees, listing price, profit , retailer price
